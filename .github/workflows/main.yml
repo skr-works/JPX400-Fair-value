@@ -16,7 +16,7 @@ jobs:
       - name: Setup Environment
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install Libraries
         run: pip install -r requirements.txt
