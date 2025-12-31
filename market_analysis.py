@@ -181,9 +181,9 @@ def build_payload(data):
     today = datetime.datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y/%m/%d')
 
     html = f"""
-    <h3>JPX400 理論株価 ({today})</h3>
+    <h3>JPX400 適正株価 ({today})</h3>
     <p>ベンジャミン・グレアムのミックス係数に基づき算出しています。<br>
-    <blockquote>理論値 = √(22.5 × EPS × BPS)</blockquote>
+    <blockquote>適正株価 = √(22.5 × EPS × BPS)</blockquote>
     ※資産と利益の両面から見た保守的な適正価格です。</p>
     """
     
@@ -192,10 +192,10 @@ def build_payload(data):
     <thead style="background-color: #f4f4f4;">
         <tr>
             <th style="padding: 2px 4px;">コード</th>
-            <th style="padding: 2px 4px;">銘柄名</th>
-            <th style="padding: 2px 4px;">株価</th>
-            <th style="padding: 2px 4px;">理論値</th>
-            <th style="padding: 2px 4px;">乖離</th>
+            <th style="padding: 2px 4px;">社名</th>
+            <th style="padding: 2px 4px;">現在株価</th>
+            <th style="padding: 2px 4px;">適正株価</th>
+            <th style="padding: 2px 4px;">割安度</th>
         </tr>
     </thead>
     <tbody>
