@@ -10,8 +10,8 @@ import concurrent.futures
 import jpholiday
 import time
 import random
-from io import StringIO # 追加: pandas警告対策
-import logging # 追加: yfinanceログ抑制
+from io import StringIO
+import logging
 
 # --- 設定 ---
 try:
@@ -30,7 +30,7 @@ except json.JSONDecodeError:
     print("Invalid configuration format.")
     sys.exit(1)
 
-# --- ログ抑制: yfinanceのノイズを消す ---
+# --- ログ抑制 ---
 logger = logging.getLogger('yfinance')
 logger.setLevel(logging.CRITICAL)
 
@@ -62,11 +62,9 @@ def analyze_stock(args):
     code, jp_name = args
     ticker_symbol = f"{code}.T"
     
-    # 高速モード
-    time.sleep(0.05)
+    time.sleep(0.05) # 高速モード
 
     info = None
-    # リトライ処理
     for i in range(2):
         try:
             stock = yf.Ticker(ticker_symbol)
@@ -87,52 +85,57 @@ def analyze_stock(args):
             skip_reasons["No_Price"] += 1
             return None
 
-        # EPS取得
+        # --- EPS取得ロジック (強化版) ---
         eps = info.get('forwardEps')
         if eps is None:
             eps = info.get('trailingEps')
-            
-        # 赤字、またはEPSデータなしは除外
-        if eps is None or eps <= 0:
+        
+        # それでも取れない場合、PERから逆算を試みる (EPS = 株価 / PER)
+        if eps is None:
+            pe = info.get('trailingPE')
+            if pe and pe > 0:
+                eps = price / pe
+
+        # 【バグ修正】Noneチェックを分離
+        if eps is None:
+            skip_reasons["No_EPS"] += 1
+            return None
+        
+        # 赤字企業は対象外 (0以下チェック)
+        if eps <= 0:
             skip_reasons["No_EPS"] += 1
             return None
 
-        # 成長率
+        # --- 成長率・配当 ---
         growth_raw = info.get('earningsGrowth')
         if growth_raw is None:
             growth_raw = info.get('revenueGrowth')
         
-        # 【修正点】成長率データがない場合、0%だと計算結果が厳しすぎるため
-        # 日本の安定成長企業の平均的な値として「3% (0.03)」を仮定する
+        # 成長率なしならデフォルト3%
         if growth_raw is None:
             growth_raw = 0.03
 
-        # 配当
         yield_raw = info.get('dividendYield', 0)
         if yield_raw is None: yield_raw = 0
 
         growth_pct = growth_raw * 100
         yield_pct = yield_raw * 100
         
-        # 成長率キャップ 25%
+        # 成長率キャップ
         capped_growth = min(growth_pct, 25.0)
         if capped_growth < 0: capped_growth = 0
         
-        # 【修正点】フィルタを撤廃
-        # 合計値が低くても計算する
-        multiplier = capped_growth + yield_pct
-        
-        # さすがに合計0以下だと適正株価がマイナスになるので弾く
-        if multiplier <= 0: 
-             skip_reasons["Abnormal_Data"] += 1
-             return None
+        # --- 計算ロジック (緩和版) ---
+        # 成長+配当が低い場合でも、最低評価倍率(PER 5倍相当)を保証して表示させる
+        base_multiplier = capped_growth + yield_pct
+        multiplier = max(base_multiplier, 5.0) 
 
         fair_value = eps * multiplier
         
         upside = ((fair_value - price) / price) * 100
         
-        # 異常値除外 (データエラー対策として1000%超のみ弾く)
-        if upside > 1000: 
+        # 異常値除外 (5000%など極端なものだけ弾く)
+        if upside > 5000: 
             skip_reasons["Abnormal_Data"] += 1
             return None
 
@@ -144,7 +147,9 @@ def analyze_stock(args):
             'diff': upside
         }
         
-    except Exception:
+    except Exception as e:
+        # デバッグ用に最初のエラーだけ表示(必要なら)
+        # print(f"Error {code}: {e}") 
         skip_reasons["Abnormal_Data"] += 1
         return None
 
@@ -161,11 +166,11 @@ def fetch_target_list():
         res = requests.get(url, headers=headers, timeout=20)
         res.encoding = "cp932"
         
-        # 修正: StringIOでラップしてFutureWarning回避
+        # pandas警告対策
         dfs = pd.read_html(StringIO(res.text), attrs={"class": "md-l-table-01"}, header=0)
         
         if not dfs:
-            print("Error: Target table (class='md-l-table-01') not found.")
+            print("Error: Table not found.")
             sys.exit(1)
             
         target_df = dfs[0]
@@ -181,7 +186,7 @@ def fetch_target_list():
             
             return clean_list
         else:
-            print("Error: Unexpected table columns.")
+            print("Error: Columns mismatch.")
             sys.exit(1)
 
     except Exception as e:
@@ -273,7 +278,6 @@ if __name__ == "__main__":
     
     results = []
     
-    # 高速モード: 20並列
     print(f"Processing {len(target_list)} stocks (Fast Mode)...")
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
