@@ -182,11 +182,9 @@ def build_payload(data):
 
     html = f"""
     <h3>JPX400 理論株価 ({today})</h3>
-    <p style="font-size: 0.8em; margin-bottom: 10px;">
-    ベンジャミン・グレアムのミックス係数に基づき算出しています。<br>
+    <p>ベンジャミン・グレアムのミックス係数に基づき算出しています。<br>
     <blockquote>理論値 = √(22.5 × EPS × BPS)</blockquote>
-    ※資産と利益の両面から見た保守的な適正価格です。
-    </p>
+    ※資産と利益の両面から見た保守的な適正価格です。</p>
     """
     
     html += '<table style="font-size: 10px; line-height: 1.1; border-collapse: collapse; width: 100%; text-align: left;">'
