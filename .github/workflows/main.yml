@@ -1,0 +1,27 @@
+name: Market Data Sync
+
+on:
+  schedule:
+    # JST 17:00 (UTC 08:00) Mon-Fri
+    - cron: '0 8 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Libraries
+        run: pip install -r requirements.txt
+
+      - name: Execute Logic
+        env:
+          SYNC_CONFIG: ${{ secrets.SYNC_CONFIG }}
+        run: python market_analysis.py
