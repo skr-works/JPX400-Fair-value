@@ -1,0 +1,7 @@
+requests
+pandas
+yfinance
+pytz
+lxml
+html5lib
+jpholiday
