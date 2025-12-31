@@ -10,6 +10,8 @@ import concurrent.futures
 import jpholiday
 import time
 import random
+from io import StringIO # 追加: pandasの警告対策
+import logging # 追加: yfinanceのログ抑制用
 
 # --- 設定 ---
 try:
@@ -27,6 +29,10 @@ except KeyError:
 except json.JSONDecodeError:
     print("Invalid configuration format.")
     sys.exit(1)
+
+# --- ログ抑制: yfinanceのエラー出力を黙らせる ---
+logger = logging.getLogger('yfinance')
+logger.setLevel(logging.CRITICAL)
 
 # --- 集計用変数 ---
 skip_reasons = {
@@ -51,16 +57,16 @@ def check_calendar():
 
     print(f"Market Open: {today}")
 
-# --- 個別銘柄処理 (高速化版) ---
+# --- 個別銘柄処理 ---
 def analyze_stock(args):
     code, jp_name = args
     ticker_symbol = f"{code}.T"
     
-    # 高速化のため待機時間を最小限に
-    time.sleep(0.1)
+    # 高速モード (待機時間極小)
+    time.sleep(0.05)
 
     info = None
-    # リトライ処理 (2回程度に短縮)
+    # リトライ処理 (2回)
     for i in range(2):
         try:
             stock = yf.Ticker(ticker_symbol)
@@ -108,8 +114,13 @@ def analyze_stock(args):
         capped_growth = min(growth_pct, 25.0)
         if capped_growth < 0: capped_growth = 0
         
+        # 修正: 判定緩和
+        # 以前は multiplier < 1.0 (成長+配当が1%未満) を弾いていたが
+        # 日本の低PBR株はここが低い場合があるため、許容する
         multiplier = capped_growth + yield_pct
-        if multiplier < 1.0: 
+        
+        # 完全にゼロならさすがに計算不能なので弾く
+        if multiplier <= 0.01: 
              skip_reasons["Abnormal_Data"] += 1
              return None
 
@@ -117,6 +128,7 @@ def analyze_stock(args):
         
         upside = ((fair_value - price) / price) * 100
         
+        # 異常値除外 (データミス対策)
         if upside > 1000: 
             skip_reasons["Abnormal_Data"] += 1
             return None
@@ -133,7 +145,7 @@ def analyze_stock(args):
         skip_reasons["Abnormal_Data"] += 1
         return None
 
-# --- 2. データ取得 (SBIリスト・クラス指定版) ---
+# --- 2. データ取得 ---
 def fetch_target_list():
     print("Fetching index data from SBI Source...")
     url = "https://site1.sbisec.co.jp/ETGate/WPLETmgR001Control?OutSide=on&getFlg=on&burl=search_market&cat1=market&cat2=info&dir=info&file=market_meigara_400.html"
@@ -146,8 +158,8 @@ def fetch_target_list():
         res = requests.get(url, headers=headers, timeout=20)
         res.encoding = "cp932"
         
-        # 修正済: md-l-table-01 クラスを指定して取得
-        dfs = pd.read_html(res.text, attrs={"class": "md-l-table-01"}, header=0)
+        # 修正: StringIOでラップして警告回避
+        dfs = pd.read_html(StringIO(res.text), attrs={"class": "md-l-table-01"}, header=0)
         
         if not dfs:
             print("Error: Target table (class='md-l-table-01') not found.")
@@ -258,9 +270,9 @@ if __name__ == "__main__":
     
     results = []
     
-    # 高速化: max_workersを20に戻し、並列処理を強化
     print(f"Processing {len(target_list)} stocks (Fast Mode)...")
     
+    # 20並列でガンガン回す
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         futures = list(executor.map(analyze_stock, target_list))
         
